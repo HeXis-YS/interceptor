@@ -94,13 +94,12 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     } else if (gcc_wrapper != 0) {
         int pathname_len = strlen(pathname);
         char *new_pathname = (char *)malloc(pathname_len + 5);
-        memset(new_pathname, '\0', pathname_len + 5);
-
         if (new_pathname == NULL) {
             perror("Memory allocation failed");
             exit(EXIT_FAILURE);
         }
 
+        memset(new_pathname, '\0', pathname_len + 5);
         strncpy(new_pathname, pathname, pathname_len - gcc_wrapper);
         strcat(new_pathname, "gcc-");
         strncat(new_pathname, pathname + pathname_len - gcc_wrapper, gcc_wrapper);
