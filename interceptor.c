@@ -51,12 +51,16 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     char *name_end = argv[0] + name_len;
     int gcc_wrapper = 0;
     int gcc_flags = 0;
-    if ((name_len >= 6) && (strcmp(name_end - 6, "ranlib") == 0)) { // match ranlib
+    if ((name_len >= 6) && (strcmp(name_end - 6, "ranlib") == 0)) { // Match ranlib
         gcc_wrapper = 6;
-    } else if ((name_len >= 3) && ((strcmp(name_end - 2, "cc") == 0) || (strcmp(name_end - 2, "++") == 0))) { // Match gcc, g++, cc, c++
+    } else if ((name_len >= 3) && ((strcmp(name_end - 3, "gcc") == 0) || (strcmp(name_end - 3, "g++") == 0) || (strcmp(name_end - 3, "c++") == 0))) { // Match gcc, g++, c++
         gcc_flags = 1;
-    } else if ((name_len >= 2) && ((strcmp(name_end - 2, "ar") == 0) || (strcmp(name_end - 2, "nm") == 0))) { // match ar and nm
-        gcc_wrapper = 2;
+    } else if (name_len >= 2) {
+        if ((strcmp(name_end - 2, "cc") == 0)) { // Match cc
+            gcc_flags = 1;
+        } else if ((strcmp(name_end - 2, "ar") == 0) || (strcmp(name_end - 2, "nm") == 0)) { // Match ar and nm
+            gcc_wrapper = 2;
+        }
     }
 
     if (gcc_flags != 0) {
