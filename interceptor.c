@@ -76,10 +76,14 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         }
 
         // Add new arguments
+        new_argv[new_argc++] = "-Wno-error";
         new_argv[new_argc++] = "-march=native";
         new_argv[new_argc++] = "-mtune=native";
         new_argv[new_argc++] = "-O3";
         new_argv[new_argc++] = "-flto";
+        new_argv[new_argc++] = "-flto-partition=one";
+        // new_argv[new_argc++] = "-fuse-ld=gold";
+        // new_argv[new_argc++] = "-fuse-linker-plugin";
         new_argv[new_argc++] = "-fgraphite-identity";
         new_argv[new_argc++] = "-floop-nest-optimize";
         new_argv[new_argc++] = "-fipa-pta";
