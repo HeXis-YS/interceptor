@@ -70,6 +70,8 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     int gcc_flags = 0;
     if ((name_len >= 6) && (strcmp(name_end - 6, "ranlib") == 0)) { // Match ranlib
         gcc_wrapper = 6;
+    } else if ((name_len >= 4) && ((strcmp(name_end - 4, "xgcc") == 0) || (strcmp(name_end - 4, "xg++") == 0))) {
+        gcc_flags = 2;
     } else if ((name_len >= 3) && ((strcmp(name_end - 3, "gcc") == 0) || (strcmp(name_end - 3, "g++") == 0) || (strcmp(name_end - 3, "c++") == 0))) { // Match gcc, g++, c++
         gcc_flags = 1;
     } else if (name_len >= 2) {
@@ -100,8 +102,10 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         new_argv[new_argc++] = "-O3";
         new_argv[new_argc++] = "-flto";
         new_argv[new_argc++] = "-flto-partition=one";
-        new_argv[new_argc++] = "-fuse-ld=gold";
-        new_argv[new_argc++] = "-fuse-linker-plugin";
+        if (gcc_flags != 2) {
+            new_argv[new_argc++] = "-fuse-ld=gold";
+            new_argv[new_argc++] = "-fuse-linker-plugin";
+        }
         new_argv[new_argc++] = "-fgraphite-identity";
         new_argv[new_argc++] = "-floop-nest-optimize";
         new_argv[new_argc++] = "-fipa-pta";
