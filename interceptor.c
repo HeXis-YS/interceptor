@@ -13,6 +13,22 @@
 // Pointer of original function
 typedef int (*original_function_type)(const char *, char *const[], char *const[]);
 
+char *strinsert(const char *str1, const char *str2, int pos) {
+    int str1_len = strlen(str1);
+    int str2_len = strlen(str2);
+    char *res = (char *)malloc(str1_len + str2_len + 1);
+    if (res == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+    memset(res, '\0', str1_len + str2_len + 1);
+    strncpy(res, str1, str1_len - pos);
+    strcat(res, str2);
+    strncat(res, str1 + str1_len - pos, pos);
+
+    return res;
+}
+
 // Modified execve function
 int execve(const char *pathname, char *const argv[], char *const envp[]) {
 #ifdef DEBUG
@@ -47,6 +63,7 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
 #endif // #ifdef LOG_FILE
 #endif // #ifdef DEBUG
 
+    original_function_type original_function = dlsym(RTLD_NEXT, "execve");
     int name_len = strlen(argv[0]);
     char *name_end = argv[0] + name_len;
     int gcc_wrapper = 0;
@@ -64,7 +81,6 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     }
 
     int new_argc;
-    char *new_pathname = NULL;
     char *new_argv[1024];
     if (gcc_flags != 0) {
         new_argc = 0;
@@ -95,44 +111,22 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         new_argv[new_argc++] = "-fno-plt";
         new_argv[new_argc] = NULL;
 
-        original_function_type original_function = dlsym(RTLD_NEXT, "execve");
         return original_function(pathname, new_argv, envp);
     } else if (gcc_wrapper != 0) {
-        int pathname_len = strlen(pathname);
-        new_pathname = (char *)malloc(pathname_len + 5);
-        if (new_pathname == NULL) {
-            perror("Memory allocation failed");
-            exit(EXIT_FAILURE);
-        }
-
-        memset(new_pathname, '\0', pathname_len + 5);
-        strncpy(new_pathname, pathname, pathname_len - gcc_wrapper);
-        strcat(new_pathname, "gcc-");
-        strncat(new_pathname, pathname + pathname_len - gcc_wrapper, gcc_wrapper);
+        char *new_pathname = strinsert(pathname, "-gcc", gcc_wrapper);
 
         if (access(new_pathname, F_OK) == 0) {
             new_argc = 1;
-            int argv0_len = strlen(argv[0]);
-            char *new_argv0 = (char *)malloc(argv0_len + 5);
-            if (new_argv0 == NULL) {
-                perror("Memory allocation failed");
-                exit(EXIT_FAILURE);
-            }
-            memset(new_argv0, '\0', argv0_len + 5);
-            strncpy(new_argv0, argv[0], argv0_len - gcc_wrapper);
-            strcat(new_argv0, "gcc-");
-            strncat(new_argv0, argv[0] + argv0_len - gcc_wrapper, gcc_wrapper);
+            char *new_argv0 = strinsert(argv[0], "-gcc", gcc_wrapper);
 
             new_argv[0] = new_argv0;
             do {
                 new_argv[new_argc] = argv[new_argc];
             } while (argv[new_argc++] != NULL);
 
-            original_function_type original_function = dlsym(RTLD_NEXT, "execve");
             return original_function(new_pathname, new_argv, envp);
         }
     }
 
-    original_function_type original_function = dlsym(RTLD_NEXT, "execve");
     return original_function(pathname, argv, envp);
 }
