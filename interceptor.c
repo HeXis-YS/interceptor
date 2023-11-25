@@ -96,6 +96,7 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         }
 
         // Add new arguments
+        new_argv[new_argc++] = "-pipe";
         new_argv[new_argc++] = "-Wno-error";
         new_argv[new_argc++] = "-march=native";
         new_argv[new_argc++] = "-mtune=native";
