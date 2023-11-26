@@ -85,9 +85,10 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
     int new_argc;
     char *new_argv[1024];
     if (gcc_flags != 0) {
-        new_argc = 0;
+        new_argv[0] = argv[0];
+        new_argc = 1;
 
-        for (int i = 0; argv[i] != NULL; i++) {
+        for (int i = 1; argv[i] != NULL; i++) {
             // Remove -O*, -march and -mtune
             if ((strncmp(argv[i], "-O", 2) == 0) || (strncmp(argv[i], "-march=", 7) == 0) || (strncmp(argv[i], "-mtune=", 7) == 0)) {
                 continue;
