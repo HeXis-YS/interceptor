@@ -120,11 +120,11 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
 
         return original_function(pathname, new_argv, envp);
     } else if (gcc_wrapper != 0) {
-        char *new_pathname = strinsert(pathname, "-gcc", gcc_wrapper);
+        char *new_pathname = strinsert(pathname, "gcc-", gcc_wrapper);
 
         if (access(new_pathname, F_OK) == 0) {
             new_argc = 1;
-            char *new_argv0 = strinsert(argv[0], "-gcc", gcc_wrapper);
+            char *new_argv0 = strinsert(argv[0], "gcc-", gcc_wrapper);
 
             new_argv[0] = new_argv0;
             do {
