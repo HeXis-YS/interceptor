@@ -134,17 +134,31 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
 
         return original_function(pathname, new_argv, envp);
     } else if (gcc_wrapper != 0) {
-        char *new_pathname = strinsert(pathname, "gcc-", gcc_wrapper);
+        if (strncmp(pathname + strlen(pathname) - gcc_wrapper - 4, "gcc-", 4) != 0) {
+            char *new_pathname = strinsert(pathname, "gcc-", gcc_wrapper);
 
-        if (access(new_pathname, F_OK) == 0) {
-            new_argc = 1;
-            new_argv[0] = strinsert(argv[0], "gcc-", gcc_wrapper);
-            do {
-                new_argv[new_argc] = argv[new_argc];
-            } while (argv[new_argc++] != NULL);
+            if (access(new_pathname, F_OK) == 0) {
+                new_argv[0] = strinsert(argv[0], "gcc-", gcc_wrapper);
+                new_argc = 1;
+                for (int i = 1; argv[i] != NULL; i++) {
+                    new_argv[new_argc++] = argv[i];
+                }
+                new_argv[new_argc] = NULL;
 
-            return original_function(new_pathname, new_argv, envp);
+                if (original_function(new_pathname, new_argv, envp) == 0) {
+                    return 0;
+                }
+            }
         }
+        new_argv[0] = argv[0];
+        new_argv[1] = "--plugin";
+        new_argv[2] = "/usr/lib/bfd-plugins/liblto_plugin.so";
+        new_argc = 3;
+        for (int i = 1; argv[i] != NULL; i++) {
+            new_argv[new_argc++] = argv[i];
+        }
+        new_argv[new_argc] = NULL;
+        return original_function(pathname, new_argv, envp);
     }
 
     return original_function(pathname, argv, envp);
