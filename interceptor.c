@@ -124,9 +124,7 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
 
         if (access(new_pathname, F_OK) == 0) {
             new_argc = 1;
-            char *new_argv0 = strinsert(argv[0], "gcc-", gcc_wrapper);
-
-            new_argv[0] = new_argv0;
+            new_argv[0] = strinsert(argv[0], "gcc-", gcc_wrapper);
             do {
                 new_argv[new_argc] = argv[new_argc];
             } while (argv[new_argc++] != NULL);
