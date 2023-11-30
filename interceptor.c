@@ -29,6 +29,24 @@ char *strinsert(const char *str1, const char *str2, int pos) {
     return res;
 }
 
+char* dashname(const char* path) {
+    char* last_slash = strrchr(path, '/');
+    if (last_slash != NULL) {
+        last_slash += 1;
+    } else {
+        last_slash = path;
+    }
+
+    char* last_dash = strrchr(last_slash, '-');
+    if (last_dash != NULL) {
+        last_dash += 1;
+    } else {
+        last_dash = last_slash;
+    }
+
+    return last_dash;
+}
+
 // Modified execve function
 int execve(const char *pathname, char *const argv[], char *const envp[]) {
 #ifdef DEBUG
@@ -65,21 +83,17 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
 
     original_function_type original_function = dlsym(RTLD_NEXT, "execve");
     int name_len = strlen(argv[0]);
-    char *name_end = argv[0] + name_len;
+    char *basename = dashname(argv[0]);
     int gcc_wrapper = 0;
     int gcc_flags = 0;
-    if ((name_len >= 6) && (strcmp(name_end - 6, "ranlib") == 0)) { // Match ranlib
-        gcc_wrapper = 6;
-    } else if ((name_len >= 4) && ((strcmp(name_end - 4, "xgcc") == 0) || (strcmp(name_end - 4, "xg++") == 0))) {
-        gcc_flags = 2;
-    } else if ((name_len >= 3) && ((strcmp(name_end - 3, "gcc") == 0) || (strcmp(name_end - 3, "g++") == 0) || (strcmp(name_end - 3, "c++") == 0))) { // Match gcc, g++, c++
+    if ((strcmp(basename, "gcc") == 0) || (strcmp(basename, "g++") == 0) || (strcmp(basename, "c++") == 0) || (strcmp(basename, "cc") == 0)) { // Match gcc, g++, c++, cc
         gcc_flags = 1;
-    } else if (name_len >= 2) {
-        if ((strcmp(name_end - 2, "cc") == 0)) { // Match cc
-            gcc_flags = 1;
-        } else if ((strcmp(name_end - 2, "ar") == 0) || (strcmp(name_end - 2, "nm") == 0)) { // Match ar and nm
-            gcc_wrapper = 2;
-        }
+    } else if ((strcmp(basename, "ar") == 0) || (strcmp(basename, "nm") == 0)) { // Match ar and nm
+        gcc_wrapper = 2;
+    } else if (strcmp(basename, "ranlib") == 0) { // Match ranlib
+        gcc_wrapper = 6;
+    } else if ((strcmp(basename, "xgcc") == 0) || (strcmp(basename, "xg++") == 0)) {
+        gcc_flags = 2;
     }
 
     int new_argc;
