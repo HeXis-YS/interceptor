@@ -10,34 +10,53 @@
 // Usage:
 // LD_PRELOAD=$(realpath ./interceptor.so) LD_LIBRARY_PATH=$(realpath .) your_program
 
-// Pointer of original function
-typedef int (*original_function_type)(const char *, char *const[], char *const[]);
+#define LOG_FILE "/tmp/interceptor.log"
+#define LTO_PLUGIN_PATH "/usr/lib/bfd-plugins/liblto_plugin.so"
 
-char *strinsert(const char *str1, const char *str2, int pos) {
+// Pointer of original function
+typedef int (*execve_type)(const char *, char *const[], char *const[]);
+
+char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", NULL};
+char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
+char *const xgcc_list[] = {"xgcc", "xg++", NULL};
+
+int match_list(const char *str, char *const list[]) {
+    int i = 0;
+    while (list[i] != NULL) {
+        if (strcmp(str, list[i]) == 0) {
+            return i;
+        }
+        i++;
+    }
+    return -1;
+}
+
+char *insert_wrapper(const char *str1, const char *str2, int index) {
     int str1_len = strlen(str1);
     int str2_len = strlen(str2);
+    int pos = str1_len - strlen(binutils_list[index]);
     char *res = (char *)malloc(str1_len + str2_len + 1);
     if (res == NULL) {
         perror("Memory allocation failed");
         exit(EXIT_FAILURE);
     }
     memset(res, '\0', str1_len + str2_len + 1);
-    strncpy(res, str1, str1_len - pos);
+    strncpy(res, str1, str1_len);
     strcat(res, str2);
-    strncat(res, str1 + str1_len - pos, pos);
+    strncat(res, str1 + str1_len, strlen(binutils_list[index]));
 
     return res;
 }
 
-char* dashname(const char* path) {
-    char* last_slash = strrchr(path, '/');
+char *basename_dash(const char *path) {
+    char *last_slash = strrchr(path, '/');
     if (last_slash != NULL) {
         last_slash += 1;
     } else {
-        last_slash = path;
+        last_slash = (char *)path;
     }
 
-    char* last_dash = strrchr(last_slash, '-');
+    char *last_dash = strrchr(last_slash, '-');
     if (last_dash != NULL) {
         last_dash += 1;
     } else {
@@ -48,57 +67,36 @@ char* dashname(const char* path) {
 }
 
 // Modified execve function
-int execve(const char *pathname, char *const argv[], char *const envp[]) {
-#ifdef DEBUG
+int process(const char *path, char *const argv[], char *const envp[], const char *func) {
 #ifdef LOG_FILE
     FILE *output_file = fopen(LOG_FILE, "a");
     if (output_file != NULL) {
-#else  // #ifdef LOG_FILE
-    FILE *output_file = stdout;
-#endif // #ifdef LOG_FILE
-#ifdef VERBOSE
-        fprintf(output_file, "Pathname: %s\n", pathname);
-        fprintf(output_file, "Arguments:\n");
+        fprintf(output_file, "[%s] \"%s\" {", func, path);
         for (int i = 0; argv[i] != NULL; i++) {
-            fprintf(output_file, "  argv[%d]: %s\n", i, argv[i]);
+            fprintf(output_file, " \"%s\"", argv[i]);
         }
-        fprintf(output_file, "Environment:\n");
-        for (int i = 0; envp[i] != NULL; i++) {
-            fprintf(output_file, "  envp[%d]: %s\n", i, envp[i]);
-        }
-#else  // #ifdef VERBOSE
-    fprintf(output_file, "%s", pathname);
-    for (int i = 0; argv[i] != NULL; i++) {
-        fprintf(output_file, " %s", argv[i]);
-    }
-#endif // #ifdef VERBOSE
-        fprintf(output_file, "\n");
-#ifdef LOG_FILE
+        fprintf(output_file, " }\n");
         fclose(output_file);
     } else {
         perror("Error opening output file");
     }
-#endif // #ifdef LOG_FILE
-#endif // #ifdef DEBUG
+#endif
 
-    original_function_type original_function = dlsym(RTLD_NEXT, "execve");
-    int name_len = strlen(argv[0]);
-    char *basename = dashname(argv[0]);
-    int gcc_wrapper = 0;
-    int gcc_flags = 0;
-    if ((strcmp(basename, "gcc") == 0) || (strcmp(basename, "g++") == 0) || (strcmp(basename, "c++") == 0) || (strcmp(basename, "cc") == 0)) { // Match gcc, g++, c++, cc
+    execve_type original_function = dlsym(RTLD_NEXT, func);
+    char *basename = basename_dash(path);
+    int gcc_wrapper = -1;
+    int gcc_flags = -1;
+    if (match_list(basename, gcc_compiler_list) != -1) {
         gcc_flags = 1;
-    } else if ((strcmp(basename, "ar") == 0) || (strcmp(basename, "nm") == 0)) { // Match ar and nm
-        gcc_wrapper = 2;
-    } else if (strcmp(basename, "ranlib") == 0) { // Match ranlib
-        gcc_wrapper = 6;
-    } else if ((strcmp(basename, "xgcc") == 0) || (strcmp(basename, "xg++") == 0)) {
+    } else if (match_list(basename, xgcc_list) != -1) {
         gcc_flags = 2;
+    } else {
+        gcc_wrapper = match_list(basename, binutils_list);
     }
 
     int new_argc;
     char *new_argv[1024];
-    if (gcc_flags != 0) {
+    if (gcc_flags != -1) {
         new_argv[0] = argv[0];
         new_argc = 1;
 
@@ -132,34 +130,56 @@ int execve(const char *pathname, char *const argv[], char *const envp[]) {
         new_argv[new_argc++] = "-fno-plt";
         new_argv[new_argc] = NULL;
 
-        return original_function(pathname, new_argv, envp);
-    } else if (gcc_wrapper != 0) {
-        if (strncmp(pathname + strlen(pathname) - gcc_wrapper - 4, "gcc-", 4) != 0) {
-            char *new_pathname = strinsert(pathname, "gcc-", gcc_wrapper);
-
-            if (access(new_pathname, F_OK) == 0) {
-                new_argv[0] = strinsert(argv[0], "gcc-", gcc_wrapper);
+        return original_function(path, new_argv, envp);
+    } else if ((gcc_wrapper != -1) && (strncmp(basename - 4, "gcc-", 4) != 0)) { // Check if gcc wrapper is called
+        // If the file called is not gcc wrapper, try to modify the request
+        if (strcmp(func, "execve") == 0) { // If the call is execve (explicit call)
+            char *new_pathname = insert_wrapper(path, "gcc-", gcc_wrapper);
+            if (access(new_pathname, F_OK) == 0) { // Check if gcc wrapper is available
+                // If gcc wrapper is available, also modify argv[0]
+                new_argv[0] = insert_wrapper(argv[0], "gcc-", gcc_wrapper);
                 new_argc = 1;
-                for (int i = 1; argv[i] != NULL; i++) {
+                for (int i = 1; argv[i] != NULL; i++) { // Copy argv[]
                     new_argv[new_argc++] = argv[i];
                 }
                 new_argv[new_argc] = NULL;
 
-                if (original_function(new_pathname, new_argv, envp) == 0) {
-                    return 0;
-                }
+                return original_function(new_pathname, new_argv, envp);
             }
         }
+
+        // if the call is implicit call
+        int plugin_available = 0;
         new_argv[0] = argv[0];
-        new_argv[1] = "--plugin";
-        new_argv[2] = "/usr/lib/bfd-plugins/liblto_plugin.so";
-        new_argc = 3;
-        for (int i = 1; argv[i] != NULL; i++) {
+        new_argc = 1;
+        for (int i = 1; argv[i] != NULL; i++) { // Copy argv
             new_argv[new_argc++] = argv[i];
+            if ((plugin_available != 0) || (strcmp(argv[i], "--plugin") != 0)) { // Check if plugin is specified in the arguments
+                continue;
+            }
+            if (access(argv[++i], F_OK) == 0) { // Check if plugin is available
+                new_argv[new_argc++] = argv[i]; // If availavle, the copy it
+            } else {
+                new_argv[new_argc++] = LTO_PLUGIN_PATH; // If not available, use predefined
+            }
+            plugin_available = 1;
+        }
+
+        if (plugin_available == 0) { // If plugin is not specified, add it manually
+            new_argv[new_argc++] = "--plugin";
+            new_argv[new_argc++] = LTO_PLUGIN_PATH;
         }
         new_argv[new_argc] = NULL;
-        return original_function(pathname, new_argv, envp);
+        return original_function(path, new_argv, envp);
     }
 
-    return original_function(pathname, argv, envp);
+    return original_function(path, argv, envp);
+}
+
+int execve(const char *pathname, char *const argv[], char *const envp[]) {
+    return process(pathname, argv, envp, __func__);
+}
+
+int execvp(const char *file, char *const argv[]) {
+    return process(file, argv, NULL, __func__);
 }
