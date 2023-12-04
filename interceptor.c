@@ -19,6 +19,7 @@ typedef int (*execve_type)(const char *, char *const[], char *const[]);
 char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const xgcc_list[] = {"xgcc", "xg++", NULL};
+char *const new_list[] = {"nm-new", NULL};
 
 int match_list(const char *str, char *const list[]) {
     int i = 0;
@@ -48,22 +49,12 @@ char *insert_wrapper(const char *str1, const char *str2, int index) {
     return res;
 }
 
-char *basename_dash(const char *path) {
-    char *last_slash = strrchr(path, '/');
-    if (last_slash != NULL) {
-        last_slash += 1;
-    } else {
-        last_slash = (char *)path;
+char *basename_char(const char *path, const char delimiter) {
+    char *last_char = strrchr(path, delimiter);
+    if (last_char != NULL) {
+        return last_char + 1;
     }
-
-    char *last_dash = strrchr(last_slash, '-');
-    if (last_dash != NULL) {
-        last_dash += 1;
-    } else {
-        last_dash = last_slash;
-    }
-
-    return last_dash;
+    return (char *)path;
 }
 
 // Modified execve function
@@ -83,15 +74,20 @@ int process(const char *path, char *const argv[], char *const envp[], const char
 #endif
 
     execve_type original_function = dlsym(RTLD_NEXT, func);
-    char *basename = basename_dash(path);
+    const char *basemame_slash = basename_char(path, '/');
+    const char *basename_dash = basename_char(basemame_slash, '-');
     int gcc_wrapper = -1;
     int gcc_flags = -1;
-    if (match_list(basename, gcc_compiler_list) != -1) {
+    int new_bin = -1;
+    if (match_list(basename_dash, gcc_compiler_list) != -1) {
         gcc_flags = 1;
-    } else if (match_list(basename, xgcc_list) != -1) {
+    } else if (match_list(basename_dash, xgcc_list) != -1) {
         gcc_flags = 2;
+    } else if (match_list(basemame_slash, new_list) != -1) {
+        gcc_wrapper = 1;
+        new_bin = 1;
     } else {
-        gcc_wrapper = match_list(basename, binutils_list);
+        gcc_wrapper = match_list(basename_dash, binutils_list);
     }
 
     int new_argc;
@@ -131,9 +127,8 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc] = NULL;
 
         return original_function(path, new_argv, envp);
-    } else if ((gcc_wrapper != -1) && (strncmp(basename - 4, "gcc-", 4) != 0)) { // Check if gcc wrapper is called
-        // If the file called is not gcc wrapper, try to modify the request
-        if (strcmp(func, "execve") == 0) { // If the call is execve (explicit call)
+    } else if (gcc_wrapper != -1) {
+        if ((new_bin == -1) && (strncmp(basename_dash - 4, "gcc-", 4) != 0) && (strcmp(func, "execve") == 0)) {
             char *new_pathname = insert_wrapper(path, "gcc-", gcc_wrapper);
             if (access(new_pathname, F_OK) == 0) { // Check if gcc wrapper is available
                 // If gcc wrapper is available, also modify argv[0]
