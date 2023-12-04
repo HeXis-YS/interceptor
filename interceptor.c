@@ -112,7 +112,8 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc++] = "-O3";
         new_argv[new_argc++] = "-flto";
         new_argv[new_argc++] = "-fno-fat-lto-objects";
-        new_argv[new_argc++] = "-flto-partition=one";
+        new_argv[new_argc++] = "-flto-partition=none";
+        new_argv[new_argc++] = "-flto-compression-level=0";
         new_argv[new_argc++] = "-fuse-linker-plugin";
         if (gcc_flags != 2) {
             new_argv[new_argc++] = "-fuse-ld=gold";
