@@ -111,9 +111,9 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc++] = "-flto-partition=none";
         new_argv[new_argc++] = "-flto-compression-level=0";
         new_argv[new_argc++] = "-fuse-linker-plugin";
-        if (gcc_flags >= 5) {
-            new_argv[new_argc++] = "-fuse-ld=gold";
-        }
+        // if (gcc_flags >= 5) {
+        //     new_argv[new_argc++] = "-fuse-ld=gold";
+        // }
         new_argv[new_argc++] = "-fgraphite-identity";
         new_argv[new_argc++] = "-floop-nest-optimize";
         new_argv[new_argc++] = "-fipa-pta";
