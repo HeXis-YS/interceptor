@@ -16,26 +16,25 @@
 // Pointer of original function
 typedef int (*execve_type)(const char *, char *const[], char *const[]);
 
-char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", NULL};
+char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
-char *const xgcc_list[] = {"xgcc", "xg++", NULL};
 char *const new_list[] = {"nm-new", NULL};
 
 int match_list(const char *str, char *const list[]) {
     int i = 0;
     while (list[i] != NULL) {
         if (strcmp(str, list[i]) == 0) {
-            return i;
+            return i + 1;
         }
         i++;
     }
-    return -1;
+    return 0;
 }
 
 char *insert_wrapper(const char *str1, const char *str2, int index) {
     int str1_len = strlen(str1);
     int str2_len = strlen(str2);
-    int pos = str1_len - strlen(binutils_list[index]);
+    int pos = str1_len - strlen(binutils_list[index - 1]);
     char *res = (char *)malloc(str1_len + str2_len + 1);
     if (res == NULL) {
         perror("Memory allocation failed");
@@ -44,7 +43,7 @@ char *insert_wrapper(const char *str1, const char *str2, int index) {
     memset(res, '\0', str1_len + str2_len + 1);
     strncpy(res, str1, str1_len);
     strcat(res, str2);
-    strncat(res, str1 + str1_len, strlen(binutils_list[index]));
+    strncat(res, str1 + str1_len, strlen(binutils_list[index - 1]));
 
     return res;
 }
@@ -76,23 +75,20 @@ int process(const char *path, char *const argv[], char *const envp[], const char
     execve_type original_function = dlsym(RTLD_NEXT, func);
     const char *basemame_slash = basename_char(path, '/');
     const char *basename_dash = basename_char(basemame_slash, '-');
-    int gcc_wrapper = -1;
-    int gcc_flags = -1;
-    int new_bin = -1;
-    if (match_list(basename_dash, gcc_compiler_list) != -1) {
-        gcc_flags = 1;
-    } else if (match_list(basename_dash, xgcc_list) != -1) {
-        gcc_flags = 2;
-    } else if (match_list(basemame_slash, new_list) != -1) {
-        gcc_wrapper = 1;
-        new_bin = 1;
-    } else {
-        gcc_wrapper = match_list(basename_dash, binutils_list);
+    int is_execve = 0;
+    int gcc_wrapper = 0;
+    int gcc_flags = 0;
+    int new_bin = 0;
+    if (strcmp(func, "execve") == 0) {
+        is_execve = 1;
+        gcc_flags = match_list(basename_dash, gcc_compiler_list);
     }
+    gcc_wrapper = match_list(basename_dash, binutils_list);
+    new_bin = match_list(basemame_slash, new_list);
 
     int new_argc;
     char *new_argv[1024];
-    if (gcc_flags != -1) {
+    if (gcc_flags) {
         new_argv[0] = argv[0];
         new_argc = 1;
 
@@ -115,7 +111,7 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc++] = "-flto-partition=none";
         new_argv[new_argc++] = "-flto-compression-level=0";
         new_argv[new_argc++] = "-fuse-linker-plugin";
-        if (gcc_flags != 2) {
+        if (gcc_flags >= 5) {
             new_argv[new_argc++] = "-fuse-ld=gold";
         }
         new_argv[new_argc++] = "-fgraphite-identity";
@@ -128,8 +124,8 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc] = NULL;
 
         return original_function(path, new_argv, envp);
-    } else if (gcc_wrapper != -1) {
-        if ((new_bin == -1) && (strncmp(basename_dash - 4, "gcc-", 4) != 0) && (strcmp(func, "execve") == 0)) {
+    } else if (gcc_wrapper && (strncmp(basename_dash - 4, "gcc-", 4) != 0)) {
+        if (is_execve && !new_bin) {
             char *new_pathname = insert_wrapper(path, "gcc-", gcc_wrapper);
             if (access(new_pathname, F_OK) == 0) { // Check if gcc wrapper is available
                 // If gcc wrapper is available, also modify argv[0]
@@ -150,7 +146,7 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argc = 1;
         for (int i = 1; argv[i] != NULL; i++) { // Copy argv
             new_argv[new_argc++] = argv[i];
-            if ((plugin_available != 0) || (strcmp(argv[i], "--plugin") != 0)) { // Check if plugin is specified in the arguments
+            if (plugin_available || (strcmp(argv[i], "--plugin") != 0)) { // Check if plugin is specified in the arguments
                 continue;
             }
             if (access(argv[++i], F_OK) == 0) { // Check if plugin is available
@@ -161,7 +157,7 @@ int process(const char *path, char *const argv[], char *const envp[], const char
             plugin_available = 1;
         }
 
-        if (plugin_available == 0) { // If plugin is not specified, add it manually
+        if (!plugin_available) { // If plugin is not specified, add it manually
             new_argv[new_argc++] = "--plugin";
             new_argv[new_argc++] = LTO_PLUGIN_PATH;
         }
