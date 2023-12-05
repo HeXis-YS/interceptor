@@ -121,6 +121,9 @@ int process(const char *path, char *const argv[], char *const envp[], const char
         new_argv[new_argc++] = "-fno-common";
         new_argv[new_argc++] = "-fdevirtualize-at-ltrans";
         new_argv[new_argc++] = "-fno-plt";
+        new_argv[new_argc++] = "-ffunction-sections";
+        new_argv[new_argc++] = "-fdata-sections";
+        new_argv[new_argc++] = "-Wl,--gc-sections";
         new_argv[new_argc] = NULL;
 
         return original_function(path, new_argv, envp);
