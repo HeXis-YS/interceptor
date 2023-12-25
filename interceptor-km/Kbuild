@@ -1,0 +1,9 @@
+MODNAME		?= interceptor-km
+
+include $(src)/../khook/Makefile.khook
+
+obj-m		+= $(MODNAME).o
+$(MODNAME)-y	+= main.o $(KHOOK_GOALS)
+
+ccflags-y	+= $(KHOOK_CCFLAGS)
+ldflags-y	+= $(KHOOK_LDFLAGS)
