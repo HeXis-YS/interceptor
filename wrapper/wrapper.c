@@ -122,8 +122,7 @@ int main(int argc, char *argv[], char *envp[]) {
                 goto skip_interception;
             }
             // Remove -O*, -march and -mtune
-            if ((strcmp(argv[i], "-pipe") == 0) ||
-                (strncmp(argv[i], "-O", 2) == 0) ||
+            if (((strncmp(argv[i], "-O", 2) == 0) && (strcmp(argv[i], "-Ofast") != 0)) ||
                 (strncmp(argv[i], "-march=", 7) == 0) ||
                 (strncmp(argv[i], "-mtune=", 7) == 0)) {
                 continue;
