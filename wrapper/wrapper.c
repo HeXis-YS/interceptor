@@ -26,17 +26,17 @@ int match_list(const char *str, char *const list[]) {
 
 char *insert_wrapper(const char *str1, const char *str2, int index) {
     int str1_len = strlen(str1);
-    int str2_len = strlen(str2);
-    int pos = str1_len - strlen(binutils_list[index - 1]);
-    char *res = (char *)malloc(str1_len + str2_len + 1);
+    int new_len = str1_len + strlen(str2) + 1;
+    int insert_pos = str1_len - strlen(binutils_list[index - 1]);
+    char *res = (char *)malloc(new_len);
     if (!res) {
         perror("Memory allocation failed");
         exit(EXIT_FAILURE);
     }
-    memset(res, '\0', str1_len + str2_len + 1);
-    strncpy(res, str1, pos);
+    memset(res, '\0', new_len);
+    strncpy(res, str1, insert_pos);
     strcat(res, str2);
-    strcat(res, str1 + pos);
+    strcat(res, str1 + insert_pos);
 
     return res;
 }
