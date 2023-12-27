@@ -28,12 +28,10 @@ int strings_equal_partial(const char *str1, const char *str2) {
 }
 
 int match_list(const char *str, char *const list[]) {
-    int i = 0;
-    while (list[i] != NULL) {
+    for (int i = 0; list[i]; i++) {
         if (strings_equal(str, list[i])) {
             return i + 1;
         }
-        i++;
     }
     return 0;
 }
@@ -57,7 +55,7 @@ char *insert_wrapper(const char *str1, const char *str2, int index) {
 
 char *get_basename(const char *path, const char delimiter) {
     char *last_char = strrchr(path, delimiter);
-    if (last_char != NULL) {
+    if (last_char) {
         return last_char + 1;
     }
     return (char *)path;
