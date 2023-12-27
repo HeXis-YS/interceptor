@@ -115,7 +115,6 @@ int main(int argc, char *argv[], char *envp[]) {
             }
             new_argv[new_argc++] = argv[i];
         }
-
         if (!lto_plugin_available) {
             char *wrapper_pathname = insert_wrapper(pathname, "gcc-", binutils);
             if (!binutils_new && (file_exist(wrapper_pathname) == 2)) { // Check if gcc wrapper is available
@@ -130,6 +129,10 @@ int main(int argc, char *argv[], char *envp[]) {
         }
         new_argv[new_argc] = NULL;
     } else if (gcc_compiler) {
+        new_argv[new_argc++] = argv[0];
+        new_argv[new_argc++] = "-march=native";
+        new_argv[new_argc++] = "-mtune=native";
+
         for (int i = 0; i < argc && argv[i]; i++) {
             if (strings_equal(argv[i], "-O4")) {
                 new_argc = 0;
@@ -145,16 +148,14 @@ int main(int argc, char *argv[], char *envp[]) {
         }
 
         // Add new arguments
-        // new_argv[new_argc++] = "-pipe";
+        new_argv[new_argc++] = "-pipe";
         new_argv[new_argc++] = "-Wno-error";
-        new_argv[new_argc++] = "-march=native";
-        new_argv[new_argc++] = "-mtune=native";
         new_argv[new_argc++] = "-O4";
-        new_argv[new_argc++] = "-flto";
-        new_argv[new_argc++] = "-fno-fat-lto-objects";
+        // new_argv[new_argc++] = "-flto";
+        // new_argv[new_argc++] = "-fno-fat-lto-objects";
         // new_argv[new_argc++] = "-flto-partition=none";
-        new_argv[new_argc++] = "-flto-compression-level=0";
-        new_argv[new_argc++] = "-fuse-linker-plugin";
+        // new_argv[new_argc++] = "-flto-compression-level=0";
+        // new_argv[new_argc++] = "-fuse-linker-plugin";
         // if (gcc_compiler < 5) {
         //     new_argv[new_argc++] = "-fuse-ld=gold";
         // }
@@ -165,9 +166,13 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc++] = "-fno-common";
         new_argv[new_argc++] = "-fdevirtualize-at-ltrans";
         new_argv[new_argc++] = "-fno-plt";
-        // new_argv[new_argc++] = "-ffunction-sections";
-        // new_argv[new_argc++] = "-fdata-sections";
-        // new_argv[new_argc++] = "-Wl,--gc-sections";
+        new_argv[new_argc++] = "-ffunction-sections";
+        new_argv[new_argc++] = "-fdata-sections";
+        new_argv[new_argc++] = "-mtls-dialect=gnu2";
+        new_argv[new_argc++] = "-malign-data=cacheline";
+        new_argv[new_argc++] = "-Wl,-O2";
+        new_argv[new_argc++] = "-Wl,--gc-sections";
+
         new_argv[new_argc] = NULL;
     }
 
