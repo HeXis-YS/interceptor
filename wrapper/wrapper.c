@@ -13,10 +13,24 @@ char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NU
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const binutils_new_list[] = {"nm-new", NULL};
 
+int strings_equal(const char *str1, const char *str2) {
+    if (strcmp(str1, str2) == 0) {
+        return 1;
+    }
+    return 0;
+}
+
+int strings_equal_partial(const char *str1, const char *str2) {
+    if (strncmp(str1, str2, strlen(str2)) == 0) {
+        return 1;
+    }
+    return 0;
+}
+
 int match_list(const char *str, char *const list[]) {
     int i = 0;
     while (list[i] != NULL) {
-        if (strcmp(str, list[i]) == 0) {
+        if (strings_equal(str, list[i])) {
             return i + 1;
         }
         i++;
@@ -84,13 +98,13 @@ int main(int argc, char *argv[], char *envp[]) {
         int lto_plugin_available = 0;
         for (int i = 0; i < argc && argv[i]; i++) {
             // fprintf(stderr,"%d %s\n", i, argv[i]);
-            if (strcmp(argv[i], "--plugin") == 0) {
+            if (strings_equal(argv[i], "--plugin")) {
                 if (argv[i + 1] == NULL) {
                     continue;
                 }
                 if (file_exist(argv[i + 1])) {
                     char *plugin_basename = get_basename(argv[i + 1], '/');
-                    if (strncmp(plugin_basename, "liblto_plugin.so", 16) == 0) {
+                    if (strings_equal_partial(plugin_basename, "liblto_plugin.so")) {
                         lto_plugin_available = 1;
                     }
                     new_argv[new_argc++] = argv[i++];
@@ -117,14 +131,14 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc] = NULL;
     } else if (gcc_compiler) {
         for (int i = 0; i < argc && argv[i]; i++) {
-            if (strcmp(argv[i], "-O4") == 0) {
+            if (strings_equal(argv[i], "-O4")) {
                 new_argc = 0;
                 goto skip_interception;
             }
             // Remove -O*, -march and -mtune
-            if (((strncmp(argv[i], "-O", 2) == 0) && (strcmp(argv[i], "-Ofast") != 0)) ||
-                (strncmp(argv[i], "-march=", 7) == 0) ||
-                (strncmp(argv[i], "-mtune=", 7) == 0)) {
+            if ((strings_equal_partial(argv[i], "-O") && !strings_equal(argv[i], "-Ofast")) ||
+                strings_equal_partial(argv[i], "-march=") ||
+                strings_equal_partial(argv[i], "-mtune=")) {
                 continue;
             }
             new_argv[new_argc++] = argv[i];
