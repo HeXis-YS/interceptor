@@ -131,7 +131,7 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc++] = "-march=native";
         new_argv[new_argc++] = "-mtune=native";
 
-        for (int i = 0; i < argc && argv[i]; i++) {
+        for (int i = 1; i < argc && argv[i]; i++) {
             if (strings_equal(argv[i], "-O4")) {
                 new_argc = 0;
                 goto skip_interception;
