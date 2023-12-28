@@ -275,6 +275,7 @@ out:
 char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const binutils_new_list[] = {"nm-new", NULL};
+char *const configure_list[] = {"sh", NULL};
 
 static int match_list(const char *str, char *const list[]) {
     for (int i = 0; list[i] != NULL; i++) {
@@ -326,6 +327,7 @@ static int do_execveat_common(int fd, struct filename *filename, struct user_arg
         }
         call_wrapper += match_list(basename_dash, gcc_compiler_list);
         call_wrapper += match_list(basemame_slash, binutils_new_list);
+        call_wrapper += match_list(basemame_slash, configure_list);
     }
     if (strcmp(current->comm, "interceptor") == 0 ||
         strcmp(current->comm, "lto-wrapper") == 0) {

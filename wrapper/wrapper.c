@@ -7,11 +7,13 @@
 #include "pex.h"
 
 #define MAX_NEW_ARGV 32
+#define NO_INTERCEPTION_ENV "NO_INTERCEPTION=1"
 #define LTO_PLUGIN_PATH "/usr/lib/bfd-plugins/liblto_plugin.so"
 
 char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const binutils_new_list[] = {"nm-new", NULL};
+char *const configure_list[] = {"configure", NULL};
 
 int strings_equal(const char *str1, const char *str2) {
     if (strcmp(str1, str2) == 0) {
@@ -80,7 +82,6 @@ int main(int argc, char *argv[], char *envp[]) {
     //     printf("%s\n", envp[i]);
     // }
     char *pathname = argv[0];
-    char *new_pathname = argv[0];
     argv++;
     argc--;
     const char *basemame_slash = get_basename(pathname, '/');
@@ -89,10 +90,24 @@ int main(int argc, char *argv[], char *envp[]) {
     int gcc_compiler = match_list(basename_dash, gcc_compiler_list);
     int binutils = match_list(basename_dash, binutils_list);
     int binutils_new = match_list(basemame_slash, binutils_new_list);
+    int configure = match_list(get_basename(argv[0], '/'), configure_list);
 
+    char *new_pathname = NULL;
     int new_argc = 0;
-    char **new_argv = malloc((argc + MAX_NEW_ARGV) * sizeof(char *));
-    if (binutils || binutils_new) {
+    char **new_argv = NULL;
+    int new_envc = 0;
+    char **new_envp = NULL;
+    if (configure) {
+        int envc = 0;
+        while (envp[envc++]);
+        new_envp = malloc((envc + 2) * sizeof(char *));
+        for (int i = 0; i < envc; i++) {
+            new_envp[new_envc++] = envp[i];
+        }
+        new_envp[new_envc++] = NO_INTERCEPTION_ENV;
+        new_envp[new_envc] = NULL;
+    } else if (binutils || binutils_new) {
+        new_argv = malloc((argc + 3) * sizeof(char *));
         int lto_plugin_available = 0;
         for (int i = 0; i < argc && argv[i]; i++) {
             // fprintf(stderr,"%d %s\n", i, argv[i]);
@@ -127,13 +142,22 @@ int main(int argc, char *argv[], char *envp[]) {
         }
         new_argv[new_argc] = NULL;
     } else if (gcc_compiler) {
-        new_argv[new_argc++] = argv[0];
+        for (int i = 0; envp[i]; i++) {
+            if strings_equal (envp[i], NO_INTERCEPTION_ENV) {
+                goto skip_interception;
+            }
+        }
+
+        new_argv = malloc((argc + MAX_NEW_ARGV) * sizeof(char *))
+
+            new_argv[new_argc++] = argv[0];
         new_argv[new_argc++] = "-march=native";
         new_argv[new_argc++] = "-mtune=native";
 
         for (int i = 1; i < argc && argv[i]; i++) {
             if (strings_equal(argv[i], "-O4")) {
                 new_argc = 0;
+                free(new_argv);
                 goto skip_interception;
             }
             // Remove -O*, -march and -mtune
@@ -179,13 +203,27 @@ skip_interception:
     const char *err_msg;
     int exit_code = FATAL_EXIT_CODE;
 
-    if (new_argc && new_argv) {
-        err_msg = pex_execve(PEX_LAST | PEX_SEARCH, new_pathname, new_argv, envp, new_argv[0], NULL, NULL, &status, &err);
-    } else {
-        err_msg = pex_execve(PEX_LAST | PEX_SEARCH, pathname, argv, envp, argv[0], NULL, NULL, &status, &err);
+    if (!new_pathname) {
+        new_pathname = pathname;
+    }
+    if (!new_argc) {
+        new_argv = argv;
+    }
+    if (!new_envc) {
+        new_envp = envp;
     }
 
-    free(new_argv);
+    err_msg = pex_execve(PEX_LAST | PEX_SEARCH, new_pathname, new_argv, new_envp, new_argv[0], NULL, NULL, &status, &err);
+
+    if (new_pathname != pathname) {
+        free(new_pathname);
+    }
+    if (new_argc) {
+        free(new_argv);
+    }
+    if (new_envc) {
+        free(new_envp);
+    }
 
     if (err_msg) {
         fprintf(stderr, "Error running %s: %s\n", argv[0], err_msg);
