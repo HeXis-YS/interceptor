@@ -107,28 +107,27 @@ int main(int argc, char *argv[], char *envp[]) {
         new_envp[new_envc++] = NO_INTERCEPTION_ENV;
         new_envp[new_envc] = NULL;
     } else if (binutils || binutils_new) {
-        new_argv = malloc((argc + 3) * sizeof(char *));
         int lto_plugin_available = 0;
         for (int i = 0; i < argc && argv[i]; i++) {
-            // fprintf(stderr,"%d %s\n", i, argv[i]);
-            if (strings_equal(argv[i], "--plugin")) {
-                if (argv[i + 1] == NULL) {
-                    continue;
-                }
-                if (file_exist(argv[i + 1])) {
-                    char *plugin_basename = get_basename(argv[i + 1], '/');
-                    if (strings_equal_partial(plugin_basename, "liblto_plugin.so")) {
-                        lto_plugin_available = 1;
-                    }
-                    new_argv[new_argc++] = argv[i++];
-                } else {
-                    i++;
-                    continue;
-                }
+            if (!strings_equal(argv[i], "--plugin")) {
+                continue;
             }
-            new_argv[new_argc++] = argv[i];
+            if (!argv[i + 1]) {
+                continue;
+            }
+            i++;
+            if (!file_exist(argv[i])) {
+                continue;
+            }
+            if (strings_equal_partial(get_basename(argv[i], '/'), "liblto_plugin.so")) {
+                lto_plugin_available = 1;
+            }
         }
         if (!lto_plugin_available) {
+            new_argv = malloc((argc + 3) * sizeof(char *));
+            for (int i = 0; i < argc && argv[i]; i++) {
+                new_argv[new_argc++] = argv[i];
+            }
             char *wrapper_pathname = insert_wrapper(pathname, "gcc-", binutils);
             if (!binutils_new && (file_exist(wrapper_pathname) == 2)) { // Check if gcc wrapper is available
                 new_pathname = wrapper_pathname;
@@ -139,8 +138,8 @@ int main(int argc, char *argv[], char *envp[]) {
                 new_argv[new_argc++] = "--plugin";
                 new_argv[new_argc++] = LTO_PLUGIN_PATH;
             }
+            new_argv[new_argc] = NULL;
         }
-        new_argv[new_argc] = NULL;
     } else if (gcc_compiler) {
         for (int i = 0; envp[i]; i++) {
             if strings_equal (envp[i], NO_INTERCEPTION_ENV) {
