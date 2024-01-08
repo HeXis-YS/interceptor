@@ -134,13 +134,29 @@ int main(int argc, char *argv[], char *envp[]) {
             for (int i = 0; i < argc && argv[i]; i++) {
                 new_argv[new_argc++] = argv[i];
             }
-            char *wrapper_pathname = insert_wrapper(pathname, "gcc-", binutils);
-            if (!binutils_new && (file_exists(wrapper_pathname) & 1)) { // Check if gcc wrapper is available
-                new_pathname = wrapper_pathname;
-                // If gcc wrapper is available, also modify argv[0]
-                // new_argv[0] = insert_wrapper(argv[0], "gcc-", binutils);
+            int dirname_len = strrchr(pathname, '/') - pathname;
+            char *new_lto_plugin_path = malloc(dirname_len + strlen("/liblto_plugin.so") + 1);
+            strncpy(new_lto_plugin_path, pathname, dirname_len);
+            strcat(new_lto_plugin_path, "/liblto_plugin.so");
+            if (file_exists(new_lto_plugin_path)) {
+                lto_plugin_available = 1;
+                new_argv[new_argc++] = "--plugin";
+                new_argv[new_argc++] = new_lto_plugin_path;
             } else {
-                free(wrapper_pathname);
+                free(new_lto_plugin_path);
+            }
+            if (!lto_plugin_available) {
+                char *wrapper_pathname = insert_wrapper(pathname, "gcc-", binutils);
+                if (!binutils_new && (file_exists(wrapper_pathname) & 1)) { // Check if gcc wrapper is available
+                    lto_plugin_available = 1;
+                    new_pathname = wrapper_pathname;
+                    // If gcc wrapper is available, also modify argv[0]
+                    // new_argv[0] = insert_wrapper(argv[0], "gcc-", binutils);
+                } else {
+                    free(wrapper_pathname);
+                }
+            }
+            if (!lto_plugin_available) {
                 new_argv[new_argc++] = "--plugin";
                 new_argv[new_argc++] = LTO_PLUGIN_PATH;
             }
