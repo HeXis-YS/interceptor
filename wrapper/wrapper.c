@@ -4,16 +4,15 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "pex.h"
+// #include "pex.h"
 
 #define MAX_NEW_ARGV 32
-#define NO_INTERCEPTION_ENV "NO_INTERCEPTION=1"
+#define ENV_SKIP_INTERCEPTION "SKIP_INTERCEPTION=1"
 #define LTO_PLUGIN_PATH "/usr/lib/bfd-plugins/liblto_plugin.so"
 
 char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const binutils_new_list[] = {"nm-new", NULL};
-char *const configure_list[] = {"configure", NULL};
 
 int strings_equal(const char *str1, const char *str2) {
     if (strcmp(str1, str2) == 0) {
@@ -22,7 +21,7 @@ int strings_equal(const char *str1, const char *str2) {
     return 0;
 }
 
-int strings_equal_partial(const char *str1, const char *str2) {
+int strings_equal_n(const char *str1, const char *str2) {
     if (strncmp(str1, str2, strlen(str2)) == 0) {
         return 1;
     }
@@ -63,13 +62,16 @@ char *get_basename(const char *path, const char delimiter) {
     return (char *)path;
 }
 
-int file_exist(const char *path) {
+int file_exists(const char *path) {
     int res = 0;
-    if (access(path, F_OK) == 0) {
-        res++;
-        if (access(path, X_OK) == 0) {
-            res++;
-        }
+    if (access(path, R_OK) == 0) {
+        res |= 4;
+    }
+    // if (access(path, W_OK) == 0) {
+    //     res |= 2;
+    // }
+    if (access(path, X_OK) == 0) {
+        res |= 1;
     }
     return res;
 }
@@ -81,32 +83,36 @@ int main(int argc, char *argv[], char *envp[]) {
     // for (int i = 0; envp[i]; i++) {
     //     printf("%s\n", envp[i]);
     // }
+
+    int skip = 0;
+    int envc;
     char *pathname = argv[0];
     argv++;
     argc--;
-    const char *basemame_slash = get_basename(pathname, '/');
-    const char *basename_dash = get_basename(basemame_slash, '-');
-
-    int gcc_compiler = match_list(basename_dash, gcc_compiler_list);
-    int binutils = match_list(basename_dash, binutils_list);
-    int binutils_new = match_list(basemame_slash, binutils_new_list);
-    int configure = match_list(get_basename(argv[0], '/'), configure_list);
 
     char *new_pathname = NULL;
     int new_argc = 0;
     char **new_argv = NULL;
     int new_envc = 0;
     char **new_envp = NULL;
-    if (configure) {
-        int envc = 0;
-        while (envp[envc++]);
-        new_envp = malloc((envc + 2) * sizeof(char *));
-        for (int i = 0; i < envc; i++) {
-            new_envp[new_envc++] = envp[i];
+
+    for (envc = 0; envp[envc]; envc++) {
+        if (strings_equal(envp[envc], ENV_SKIP_INTERCEPTION)) {
+            skip = 1;
         }
-        new_envp[new_envc++] = NO_INTERCEPTION_ENV;
-        new_envp[new_envc] = NULL;
-    } else if (binutils || binutils_new) {
+    }
+    if (skip) {
+        goto skip_interception;
+    }
+
+    const char *basename_slash = get_basename(pathname, '/');
+    const char *basename_dash = get_basename(basename_slash, '-');
+
+    int gcc_compiler = match_list(basename_dash, gcc_compiler_list);
+    int binutils = match_list(basename_dash, binutils_list);
+    int binutils_new = match_list(basename_slash, binutils_new_list);
+
+    if (binutils || binutils_new) {
         int lto_plugin_available = 0;
         for (int i = 0; i < argc && argv[i]; i++) {
             if (!strings_equal(argv[i], "--plugin")) {
@@ -116,10 +122,10 @@ int main(int argc, char *argv[], char *envp[]) {
                 continue;
             }
             i++;
-            if (!file_exist(argv[i])) {
+            if (!file_exists(argv[i])) {
                 continue;
             }
-            if (strings_equal_partial(get_basename(argv[i], '/'), "liblto_plugin.so")) {
+            if (strings_equal_n(get_basename(argv[i], '/'), "liblto_plugin.so")) {
                 lto_plugin_available = 1;
             }
         }
@@ -129,10 +135,10 @@ int main(int argc, char *argv[], char *envp[]) {
                 new_argv[new_argc++] = argv[i];
             }
             char *wrapper_pathname = insert_wrapper(pathname, "gcc-", binutils);
-            if (!binutils_new && (file_exist(wrapper_pathname) == 2)) { // Check if gcc wrapper is available
+            if (!binutils_new && (file_exists(wrapper_pathname) & 1)) { // Check if gcc wrapper is available
                 new_pathname = wrapper_pathname;
                 // If gcc wrapper is available, also modify argv[0]
-                new_argv[0] = insert_wrapper(argv[0], "gcc-", binutils);
+                // new_argv[0] = insert_wrapper(argv[0], "gcc-", binutils);
             } else {
                 free(wrapper_pathname);
                 new_argv[new_argc++] = "--plugin";
@@ -141,28 +147,17 @@ int main(int argc, char *argv[], char *envp[]) {
             new_argv[new_argc] = NULL;
         }
     } else if (gcc_compiler) {
-        for (int i = 0; envp[i]; i++) {
-            if strings_equal (envp[i], NO_INTERCEPTION_ENV) {
-                goto skip_interception;
-            }
-        }
+        new_argv = malloc((argc + MAX_NEW_ARGV) * sizeof(char *));
 
-        new_argv = malloc((argc + MAX_NEW_ARGV) * sizeof(char *))
-
-            new_argv[new_argc++] = argv[0];
+        new_argv[new_argc++] = argv[0];
         new_argv[new_argc++] = "-march=native";
         new_argv[new_argc++] = "-mtune=native";
 
         for (int i = 1; i < argc && argv[i]; i++) {
-            if (strings_equal(argv[i], "-O4")) {
-                new_argc = 0;
-                free(new_argv);
-                goto skip_interception;
-            }
             // Remove -O*, -march and -mtune
-            if ((strings_equal_partial(argv[i], "-O") && !strings_equal(argv[i], "-Ofast")) ||
-                strings_equal_partial(argv[i], "-march=") ||
-                strings_equal_partial(argv[i], "-mtune=")) {
+            if ((strings_equal_n(argv[i], "-O") && !strings_equal(argv[i], "-Ofast")) ||
+                strings_equal_n(argv[i], "-march=") ||
+                strings_equal_n(argv[i], "-mtune=")) {
                 continue;
             }
             new_argv[new_argc++] = argv[i];
@@ -171,7 +166,7 @@ int main(int argc, char *argv[], char *envp[]) {
         // Add new arguments
         new_argv[new_argc++] = "-pipe";
         new_argv[new_argc++] = "-Wno-error";
-        new_argv[new_argc++] = "-O4";
+        new_argv[new_argc++] = "-O3";
         // new_argv[new_argc++] = "-flto";
         // new_argv[new_argc++] = "-fno-fat-lto-objects";
         // new_argv[new_argc++] = "-flto-partition=none";
@@ -197,11 +192,14 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc] = NULL;
     }
 
-skip_interception:
-    int status, err;
-    const char *err_msg;
-    int exit_code = FATAL_EXIT_CODE;
+    new_envp = malloc((envc + 2) * sizeof(char *));
+    for (int i = 0; i < envc && envp[i]; i++) {
+        new_envp[new_envc++] = envp[i];
+    }
+    new_envp[new_envc++] = ENV_SKIP_INTERCEPTION;
+    new_envp[new_envc] = NULL;
 
+skip_interception:
     if (!new_pathname) {
         new_pathname = pathname;
     }
@@ -212,31 +210,15 @@ skip_interception:
         new_envp = envp;
     }
 
-    err_msg = pex_execve(PEX_LAST | PEX_SEARCH, new_pathname, new_argv, new_envp, new_argv[0], NULL, NULL, &status, &err);
+    return execve(new_pathname, new_argv, new_envp);
 
-    if (new_pathname != pathname) {
-        free(new_pathname);
-    }
-    if (new_argc) {
-        free(new_argv);
-    }
-    if (new_envc) {
-        free(new_envp);
-    }
-
-    if (err_msg) {
-        fprintf(stderr, "Error running %s: %s\n", argv[0], err_msg);
-    } else if (status) {
-        if (WIFSIGNALED(status)) {
-            int sig = WTERMSIG(status);
-            fprintf(stderr, "%s terminated with signal %d [%s]%s\n",
-                    argv[0], sig, strsignal(sig),
-                    WCOREDUMP(status) ? ", core dumped" : "");
-        } else if (WIFEXITED(status)) {
-            exit_code = WEXITSTATUS(status);
-        }
-    } else {
-        exit_code = SUCCESS_EXIT_CODE;
-    }
-    return exit_code;
+    // if (new_pathname != pathname) {
+    //     free(new_pathname);
+    // }
+    // if (new_argc) {
+    //     free(new_argv);
+    // }
+    // if (new_envc) {
+    //     free(new_envp);
+    // }
 }
