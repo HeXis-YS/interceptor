@@ -5,8 +5,7 @@
 
 #define pr_fmt(fmt) "<%s> " fmt, __func__
 ////////////////////////////////////////////////////////////////////////////////
-// Linux v6.1.67
-// Codes in this section should NOT be touched
+// Function Hooks
 #include <linux/binfmts.h>
 #include <linux/compat.h>
 #include <linux/highmem.h>
@@ -82,6 +81,9 @@ static bool khook_is_rlimit_overlimit(struct ucounts *ucounts, enum rlimit_type 
 }
 #define is_rlimit_overlimit(ucounts, type, rlimit) khook_is_rlimit_overlimit(ucounts, type, rlimit)
 
+////////////////////////////////////////////////////////////////////////////////
+// Linux v6.1.0
+
 static int do_execve(struct filename *filename, const char __user *const __user *__argv, const char __user *const __user *__envp) {
     struct user_arg_ptr argv = {.ptr.native = __argv};
     struct user_arg_ptr envp = {.ptr.native = __envp};
@@ -98,19 +100,15 @@ static const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr) {
 #ifdef CONFIG_COMPAT
     if (unlikely(argv.is_compat)) {
         compat_uptr_t compat;
-
         if (get_user(compat, argv.ptr.compat + nr)) {
             return ERR_PTR(-EFAULT);
         }
-
         return compat_ptr(compat);
     }
 #endif
-
     if (get_user(native, argv.ptr.native + nr)) {
         return ERR_PTR(-EFAULT);
     }
-
     return native;
 }
 
@@ -119,28 +117,24 @@ static void put_arg_page(struct page *page) {
 }
 
 static void flush_arg_page(struct linux_binprm *bprm, unsigned long pos, struct page *page) {
+    flush_cache_page(bprm->vma, pos, page_to_pfn(page));
 }
 
 static int count(struct user_arg_ptr argv, int max) {
     int i = 0;
-
     if (argv.ptr.native != NULL) {
         for (;;) {
             const char __user *p = get_user_arg_ptr(argv, i);
-
             if (!p) {
                 break;
             }
-
             if (IS_ERR(p)) {
                 return -EFAULT;
             }
-
             if (i >= max) {
                 return -E2BIG;
             }
             ++i;
-
             if (fatal_signal_pending(current)) {
                 return -ERESTARTNOHAND;
             }
@@ -152,18 +146,14 @@ static int count(struct user_arg_ptr argv, int max) {
 
 static int bprm_stack_limits(struct linux_binprm *bprm) {
     unsigned long limit, ptr_size;
-
     limit = _STK_LIM / 4 * 3;
     limit = min(limit, bprm->rlim_stack.rlim_cur / 4);
-
     limit = max_t(unsigned long, limit, ARG_MAX);
-
     ptr_size = (max(bprm->argc, 1) + bprm->envc) * sizeof(void *);
     if (limit <= ptr_size) {
         return -E2BIG;
     }
     limit -= ptr_size;
-
     bprm->argmin = bprm->p - limit;
     return 0;
 }
@@ -173,23 +163,19 @@ static int copy_strings(int argc, struct user_arg_ptr argv, struct linux_binprm 
     char *kaddr = NULL;
     unsigned long kpos = 0;
     int ret;
-
     while (argc-- > 0) {
         const char __user *str;
         int len;
         unsigned long pos;
-
         ret = -EFAULT;
         str = get_user_arg_ptr(argv, argc);
         if (IS_ERR(str)) {
             goto out;
         }
-
         len = strnlen_user(str, MAX_ARG_STRLEN);
         if (!len) {
             goto out;
         }
-
         ret = -E2BIG;
         if (!valid_arg_len(bprm, len)) {
             goto out;
@@ -203,16 +189,13 @@ static int copy_strings(int argc, struct user_arg_ptr argv, struct linux_binprm 
             goto out;
         }
 #endif
-
         while (len > 0) {
             int offset, bytes_to_copy;
-
             if (fatal_signal_pending(current)) {
                 ret = -ERESTARTNOHAND;
                 goto out;
             }
             cond_resched();
-
             offset = pos % PAGE_SIZE;
             if (offset == 0) {
                 offset = PAGE_SIZE;
@@ -225,16 +208,13 @@ static int copy_strings(int argc, struct user_arg_ptr argv, struct linux_binprm 
             pos -= bytes_to_copy;
             str -= bytes_to_copy;
             len -= bytes_to_copy;
-
             if (!kmapped_page || kpos != (pos & PAGE_MASK)) {
                 struct page *page;
-
                 page = get_arg_page(bprm, pos, 1);
                 if (!page) {
                     ret = -E2BIG;
                     goto out;
                 }
-
                 if (kmapped_page) {
                     flush_dcache_page(kmapped_page);
                     kunmap_local(kaddr);
@@ -266,16 +246,9 @@ out:
 #define MAX_NEW_ARGV 32
 #define INTERCEPTOR_WRAPPER_PATH "/usr/bin/interceptor"
 
-// struct interceptor_stat {
-//     int binutils;
-//     int binutils_manual_plugin;
-//     int gcc_compiler;
-// };
-
 char *const gcc_compiler_list[] = {"gcc", "g++", "c++", "cc", "xgcc", "xg++", NULL};
 char *const binutils_list[] = {"ar", "nm", "ranlib", NULL};
 char *const binutils_new_list[] = {"nm-new", NULL};
-char *const configure_list[] = {"sh", NULL};
 
 static int match_list(const char *str, char *const list[]) {
     for (int i = 0; list[i] != NULL; i++) {
@@ -313,7 +286,11 @@ static int do_execveat_common(int fd, struct filename *filename, struct user_arg
         return PTR_ERR(filename);
     }
 
-    // struct interceptor_stat stat;
+    if ((current->flags & PF_NPROC_EXCEEDED) && is_rlimit_overlimit(current_ucounts(), UCOUNT_RLIMIT_NPROC, rlimit(RLIMIT_NPROC))) {
+        retval = -EAGAIN;
+        goto out_ret;
+    }
+
     int call_wrapper = 0;
     struct filename *original_filename = NULL;
     char *pathname = filename->name;
@@ -327,7 +304,6 @@ static int do_execveat_common(int fd, struct filename *filename, struct user_arg
         }
         call_wrapper += match_list(basename_dash, gcc_compiler_list);
         call_wrapper += match_list(basemame_slash, binutils_new_list);
-        call_wrapper += match_list(basemame_slash, configure_list);
     }
     if (strcmp(current->comm, "interceptor") == 0 ||
         strcmp(current->comm, "lto-wrapper") == 0) {
@@ -336,11 +312,6 @@ static int do_execveat_common(int fd, struct filename *filename, struct user_arg
     if (call_wrapper) {
         original_filename = filename;
         filename = getname_kernel(INTERCEPTOR_WRAPPER_PATH);
-    }
-
-    if ((current->flags & PF_NPROC_EXCEEDED) && is_rlimit_overlimit(current_ucounts(), UCOUNT_RLIMIT_NPROC, rlimit(RLIMIT_NPROC))) {
-        retval = -EAGAIN;
-        goto out_ret;
     }
 
     current->flags &= ~PF_NPROC_EXCEEDED;
@@ -394,12 +365,6 @@ static int do_execveat_common(int fd, struct filename *filename, struct user_arg
         goto out_free;
     }
 
-    /*
-     * When argv is empty, add an empty string ("") as argv[0] to
-     * ensure confused userspace programs that start processing
-     * from argv[1] won't end up walking envp. See also
-     * bprm_stack_limits().
-     */
     if (bprm->argc == 0) {
         retval = copy_string_kernel("", bprm);
         if (retval < 0) {
