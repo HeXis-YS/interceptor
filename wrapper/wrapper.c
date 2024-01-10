@@ -205,10 +205,9 @@ int main(int argc, char *argv[], char *envp[]) {
     }
 
     new_envp = malloc((envc + 2) * sizeof(char *));
-    for (int i = 0; i < envc && envp[i]; i++) {
-        new_envp[new_envc++] = envp[i];
-    }
-    new_envp[new_envc++] = ENV_SKIP_INTERCEPTION;
+    new_envp[0] = ENV_SKIP_INTERCEPTION;
+    memcpy(new_envp + 1, envp, envc * sizeof(char *));
+    new_envc = envc + 1;
     new_envp[new_envc] = NULL;
 
 skip_interception:
