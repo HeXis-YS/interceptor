@@ -84,7 +84,6 @@ int main(int argc, char *argv[], char *envp[]) {
     //     printf("%s\n", envp[i]);
     // }
 
-    int skip = 0;
     int envc;
     char *pathname = argv[0];
     argv++;
@@ -98,11 +97,8 @@ int main(int argc, char *argv[], char *envp[]) {
 
     for (envc = 0; envp[envc]; envc++) {
         if (strings_equal(envp[envc], ENV_SKIP_INTERCEPTION)) {
-            skip = 1;
+            goto skip_interception;
         }
-    }
-    if (skip) {
-        goto skip_interception;
     }
 
     const char *basename_slash = get_basename(pathname, '/');
