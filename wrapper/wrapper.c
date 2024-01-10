@@ -166,6 +166,15 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc++] = "-mtune=native";
 
         for (int i = 1; i < argc && argv[i]; i++) {
+            if (strings_equal(argv[i], "-v") ||
+                strings_equal(argv[i], "-V") ||
+                strings_equal(argv[i], "--version") ||
+                strings_equal(argv[i], "-qversion") ||
+                strings_equal_n(get_basename(argv[i], '/'), "conftest")) {
+                new_argc = 0;
+                free(new_argv);
+                goto skip_interception;
+            }
             // Remove -O*, -march and -mtune
             if ((strings_equal_n(argv[i], "-O") && !strings_equal(argv[i], "-Ofast")) ||
                 strings_equal_n(argv[i], "-march=") ||
