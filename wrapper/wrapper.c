@@ -188,14 +188,16 @@ int main(int argc, char *argv[], char *envp[]) {
         new_argv[new_argc++] = "-pipe";
         new_argv[new_argc++] = "-Wno-error";
         new_argv[new_argc++] = "-O3";
-        // new_argv[new_argc++] = "-flto";
-        // new_argv[new_argc++] = "-fno-fat-lto-objects";
-        // new_argv[new_argc++] = "-flto-partition=none";
-        // new_argv[new_argc++] = "-flto-compression-level=0";
-        // new_argv[new_argc++] = "-fuse-linker-plugin";
-        // if (gcc_compiler < 5) {
-        //     new_argv[new_argc++] = "-fuse-ld=gold";
-        // }
+        if (file_exists("/usr/bin/interceptor_use_lto")) {
+            new_argv[new_argc++] = "-flto";
+            new_argv[new_argc++] = "-fno-fat-lto-objects";
+            new_argv[new_argc++] = "-flto-partition=none";
+            new_argv[new_argc++] = "-flto-compression-level=0";
+            new_argv[new_argc++] = "-fuse-linker-plugin";
+        }
+        if (gcc_compiler < 5) {
+            new_argv[new_argc++] = "-fuse-ld=gold";
+        }
         new_argv[new_argc++] = "-fgraphite-identity";
         new_argv[new_argc++] = "-floop-nest-optimize";
         new_argv[new_argc++] = "-fipa-pta";
